@@ -21,6 +21,7 @@
 	let selectedPiece: THREE.Mesh | null = null;
 	let isPieceLifted = false; // Track if the piece is currently lifted
 	let originalPosition: Position | null = null;
+	let isMouseDown = false; // Track if the mouse is currently down
 
 	// Track whose turn it is
 	let currentPlayer: Color = 0x0000ff; // Blue starts first
@@ -93,14 +94,48 @@
 		return piece;
 	}
 
-	// Function to create a cone (for kings)
+	// Function to create a king piece with a crown
 	function createKing(color: Color, position: Position): THREE.Mesh {
-		const pieceGeometry = new THREE.RingGeometry(0.12, 0.4, 64); // Inner radius, outer radius, and segments
+		// Create the main cone part of the king
+		const pieceGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.4, 64);
 		const pieceMaterial = new THREE.MeshStandardMaterial({ color });
 		const piece = new THREE.Mesh(pieceGeometry, pieceMaterial);
-		piece.position.set(position.x, 0.2, position.z); // Ensure they are above the board
-		piece.rotation.x = -Math.PI / 2; // Rotate the piece to lie flat
-		piece.userData = { isPiece: true, color, isKing: true }; // Mark as a piece and store its color
+
+		// Position the cone
+		piece.position.set(position.x, 0.2, position.z); // Ensure it is above the board
+
+		// Create the crown base (a torus/ring around the top of the cone)
+		const crownBaseGeometry = new THREE.TorusGeometry(0.25, 0.05, 16, 100);
+		const crownBaseMaterial = new THREE.MeshStandardMaterial({ color: 0xffd700 }); // Gold color
+		const crownBase = new THREE.Mesh(crownBaseGeometry, crownBaseMaterial);
+
+		// Position the crown base just above the cone
+		crownBase.position.set(0, 0.4, 0);
+		crownBase.rotation.x = Math.PI / 2; // Rotate so it sits horizontally
+
+		// Create the crown points (small spheres around the top of the crown base)
+		const crownPointGeometry = new THREE.SphereGeometry(0.05, 32, 32);
+		const crownPoints = [];
+		const pointMaterial = new THREE.MeshStandardMaterial({ color: 0xffd700 }); // Same gold color
+
+		const numPoints = 5; // Number of points on the crown
+		const radius = 0.2; // Radius of the circle where the points are placed
+		for (let i = 0; i < numPoints; i++) {
+			const angle = (i / numPoints) * Math.PI * 2;
+			const x = Math.cos(angle) * radius;
+			const z = Math.sin(angle) * radius;
+			const crownPoint = new THREE.Mesh(crownPointGeometry, pointMaterial);
+			crownPoint.position.set(x, 0.45, z);
+			crownPoints.push(crownPoint);
+			piece.add(crownPoint); // Add each crown point to the piece
+		}
+
+		// Add the crown base to the piece
+		piece.add(crownBase);
+
+		// Set userData properties
+		piece.userData = { isPiece: true, color, isKing: true, hasMoved: false };
+
 		return piece;
 	}
 
@@ -303,6 +338,10 @@
 	}
 
 	function handleMouseDown() {
+		if (isMouseDown) return; // If the mouse is already down, do nothing
+
+		isMouseDown = true; // Set the mouse down flag
+
 		if (selectedPiece) {
 			// Check if turn-taking is enabled and if the piece belongs to the current player
 			if (turnTaking && selectedPiece.userData.color !== currentPlayer) {
@@ -385,6 +424,8 @@
 			isPieceLifted = false;
 			selectedPiece = null;
 		}
+
+		isMouseDown = false; // Reset the mouse down flag
 	}
 
 	function handleMouseMove() {
