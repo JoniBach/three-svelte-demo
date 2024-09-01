@@ -425,71 +425,84 @@
 	}
 
 	function handleMouseUp() {
-		if (selectedPiece && isPieceLifted) {
-			// Determine the square where the piece is dropped
-			const targetSquare = highlightedSquares.find(
-				(sq) =>
-					selectedPiece &&
-					Math.abs(sq.position.x - selectedPiece.position.x) < 0.5 &&
-					Math.abs(sq.position.z - selectedPiece.position.z) < 0.5
-			);
+		if (!selectedPiece || !isPieceLifted) return;
 
-			// Check if the piece is dropped onto a legal square
-			if (targetSquare) {
-				// Check for capturing move
-				const capturedX = (targetSquare.position.x + originalPosition!.x) / 2;
-				const capturedZ = (targetSquare.position.z + originalPosition!.z) / 2;
+		// Determine the square where the piece is dropped
+		const targetSquare = highlightedSquares.find(
+			(sq) =>
+				selectedPiece &&
+				Math.abs(sq.position.x - selectedPiece.position.x) < 0.5 &&
+				selectedPiece &&
+				Math.abs(sq.position.z - selectedPiece.position.z) < 0.5
+		);
 
-				const capturedPiece = scene.children.find((child) => {
-					return (
-						child.userData.isPiece &&
-						child.position.x === capturedX &&
-						child.position.z === capturedZ &&
-						child.userData.color !== selectedPiece!.userData.color // Ensure it's an opponent's piece
-					);
-				}) as THREE.Mesh | undefined;
-
-				// Remove the captured piece if it exists
-				if (capturedPiece) {
-					scene.remove(capturedPiece);
-				}
-
-				// Move the selected piece to the target square
-				selectedPiece.position.x = targetSquare.position.x;
-				selectedPiece.position.z = targetSquare.position.z;
-				selectedPiece.position.y = 0.3; // Place the piece back down on the board
-
-				// Update the hasMoved flag
-				selectedPiece.userData.hasMoved = true;
-
-				// Promote to king if needed
-				if (
-					selectedPiece.position.z ===
-					(selectedPiece.userData.color === colorB ? height / 2 - 0.5 : -height / 2 + 0.5)
-				) {
-					promoteToKing(selectedPiece);
-				}
-
-				// Switch turn if turn-taking is enabled
-				if (turnTaking) {
-					currentPlayer = currentPlayer === colorB ? colorA : colorB; // Toggle player turn
-				}
-			} else {
-				// If not on a legal square, move the piece back to its original position
-				if (originalPosition) {
-					selectedPiece.position.x = originalPosition.x;
-					selectedPiece.position.z = originalPosition.z;
-					selectedPiece.position.y = 0.3; // Place the piece back down on the board
-				}
-			}
-
-			// Clear highlights and reset lifting state
-			highlightLegalSquares([]);
-			isPieceLifted = false;
-			selectedPiece = null;
+		// If the piece is dropped onto a legal square
+		if (targetSquare) {
+			handlePieceDrop(targetSquare);
+		} else {
+			// Return the piece to its original position if not on a legal square
+			resetPiecePosition();
 		}
 
+		// Clear highlights and reset lifting state
+		clearHighlights();
+		isPieceLifted = false;
+		selectedPiece = null;
 		isMouseDown = false; // Reset the mouse down flag
+	}
+
+	function handlePieceDrop(targetSquare: THREE.Mesh) {
+		const capturedPiece = getCapturedPiece(targetSquare);
+
+		// Remove the captured piece if it exists
+		if (capturedPiece) {
+			scene.remove(capturedPiece);
+		}
+
+		// Move the selected piece to the target square
+		selectedPiece!.position.set(targetSquare.position.x, 0.3, targetSquare.position.z);
+
+		// Update the hasMoved flag
+		selectedPiece!.userData.hasMoved = true;
+
+		// Promote to king if needed
+		if (isPromotionRow(selectedPiece!)) {
+			promoteToKing(selectedPiece!);
+		}
+
+		// Switch turn if turn-taking is enabled
+		if (turnTaking) {
+			currentPlayer = currentPlayer === colorB ? colorA : colorB;
+		}
+	}
+
+	function resetPiecePosition() {
+		if (originalPosition) {
+			selectedPiece!.position.set(originalPosition.x, 0.3, originalPosition.z);
+		}
+	}
+
+	function getCapturedPiece(targetSquare: THREE.Mesh): THREE.Mesh | undefined {
+		const capturedX = (targetSquare.position.x + originalPosition!.x) / 2;
+		const capturedZ = (targetSquare.position.z + originalPosition!.z) / 2;
+
+		return scene.children.find(
+			(child) =>
+				child.userData.isPiece &&
+				child.position.x === capturedX &&
+				child.position.z === capturedZ &&
+				child.userData.color !== selectedPiece!.userData.color
+		) as THREE.Mesh | undefined;
+	}
+
+	function isPromotionRow(piece: THREE.Mesh): boolean {
+		return (
+			piece.position.z === (piece.userData.color === colorB ? height / 2 - 0.5 : -height / 2 + 0.5)
+		);
+	}
+
+	function clearHighlights() {
+		highlightLegalSquares([]);
 	}
 
 	function handleMouseMove() {
@@ -508,41 +521,39 @@
 	}
 
 	function handleHover() {
-		const intersects = raycaster.intersectObjects(scene.children, true);
-
-		// Filter to ensure we only deal with pieces, identified by a specific userData property
-		const pieceIntersects = intersects.filter((intersect) => intersect.object.userData.isPiece);
+		const pieceIntersects = raycaster
+			.intersectObjects(scene.children, true)
+			.filter((intersect) => intersect.object.userData.isPiece);
 
 		if (pieceIntersects.length > 0) {
 			const object = pieceIntersects[0].object;
 
 			if (isMesh(object) && object !== selectedPiece) {
-				// Reset the previous piece's glow
-				if (selectedPiece) {
-					const previousMaterial = (selectedPiece as THREE.Mesh)
-						.material as THREE.MeshStandardMaterial;
-					if (previousMaterial && 'emissive' in previousMaterial) {
-						previousMaterial.emissive.setHex(pieceHoverGlowColor);
-					}
-				}
-
-				// Set the new selected piece
-				selectedPiece = object;
-
-				// Apply glow effect to the currently hovered piece
-				const material = selectedPiece.material as THREE.MeshStandardMaterial;
-				if (material && 'emissive' in material) {
-					const baseColor = material.color.getHex(); // Get the original color
-					material.emissive.setHex(baseColor); // Set the emissive to the same color as the base
-				}
+				applyGlowEffect(object);
 			}
 		} else if (selectedPiece && !isPieceLifted) {
-			// Reset the previous piece's glow when nothing is hovered
-			const previousMaterial = (selectedPiece as THREE.Mesh).material as THREE.MeshStandardMaterial;
-			if (previousMaterial && 'emissive' in previousMaterial) {
-				previousMaterial.emissive.setHex(pieceHoverGlowColor);
-			}
+			removeGlowEffect(selectedPiece);
 			selectedPiece = null;
+		}
+	}
+
+	function applyGlowEffect(object: THREE.Mesh) {
+		if (selectedPiece) {
+			removeGlowEffect(selectedPiece);
+		}
+
+		selectedPiece = object;
+		const material = selectedPiece.material as THREE.MeshStandardMaterial;
+
+		if (material && 'emissive' in material) {
+			material.emissive.setHex(material.color.getHex()); // Set emissive to base color
+		}
+	}
+
+	function removeGlowEffect(piece: THREE.Mesh) {
+		const material = piece.material as THREE.MeshStandardMaterial;
+		if (material && 'emissive' in material) {
+			material.emissive.setHex(pieceHoverGlowColor);
 		}
 	}
 
