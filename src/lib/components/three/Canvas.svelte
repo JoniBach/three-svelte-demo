@@ -2,6 +2,33 @@
 	import { onMount } from 'svelte';
 	import * as THREE from 'three';
 
+	// Define constants for reusable hard-coded values
+	const boardColorLight = 0xf0d9b5; // Light squares
+	const boardColorDark = 0xb58863; // Dark squares
+	const colorA = 0x0000ff; // Black pieces
+	const colorB = 0xff0000; // White pieces
+	const kingCrownColor = 0xffd700; // Gold color for the crown
+	const boardHighlightColor = 0x00ff00; // Highlight color for legal moves
+	const pieceHeight = 0.2; // Height of the pieces above the board
+	const pieceRadius = 0.4; // Radius of the piece cylinders
+	const cameraPosition = { x: 0, y: 12, z: 0 }; // Position the camera directly above the board
+	const cameraFov = 45; // Camera field of view
+	const cameraNear = 0.1; // Camera near clipping plane
+	const cameraFar = 1000; // Camera far clipping plane
+
+	const crownBaseRadius = 0.25; // Radius of the crown base
+	const crownBaseThickness = 0.05; // Thickness of the crown base
+	const crownPointRadius = 0.05; // Radius of the crown points
+	const crownPointSegments = 32; // Segments for the crown points
+
+	const pieceLiftHeight = 0.5; // Height to lift the piece when selected
+	const pieceHoverGlowColor = 0x000000; // Glow color when hovering over a piece
+
+	const ambientLightColor = 0x404040; // Soft white ambient light
+	const ambientLightIntensity = 1; // Ambient light intensity
+	const directionalLightColor = 0xffffff; // Directional light color
+	const directionalLightPosition = { x: 0, y: 10, z: 10 }; // Directional light position
+
 	type Position = { x: number; z: number };
 	type Color = number;
 
@@ -24,17 +51,17 @@
 	let isMouseDown = false; // Track if the mouse is currently down
 
 	// Track whose turn it is
-	let currentPlayer: Color = 0x0000ff; // Blue starts first
+	let currentPlayer: Color = colorA; // Black starts first
 
 	// Function to create the camera
 	function createCamera(): THREE.PerspectiveCamera {
 		const camera = new THREE.PerspectiveCamera(
-			45, // Field of view
+			cameraFov, // Field of view
 			canvasWidth / canvasHeight, // Aspect ratio
-			0.1, // Near clipping plane
-			1000 // Far clipping plane
+			cameraNear, // Near clipping plane
+			cameraFar // Far clipping plane
 		);
-		camera.position.set(0, 12, 0); // Position the camera directly above the board
+		camera.position.set(cameraPosition.x, cameraPosition.y, cameraPosition.z); // Position the camera directly above the board
 		camera.lookAt(0, 0, 0); // Look straight down at the center of the board
 		return camera;
 	}
@@ -48,11 +75,13 @@
 
 	// Function to add lights to the scene
 	function addLights(scene: THREE.Scene): void {
-		const ambientLight = new THREE.AmbientLight(0x404040, 1); // Soft white light
+		const ambientLight = new THREE.AmbientLight(ambientLightColor, ambientLightIntensity); // Soft white light
 		scene.add(ambientLight);
 
-		const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-		directionalLight.position.set(0, 10, 10).normalize();
+		const directionalLight = new THREE.DirectionalLight(directionalLightColor, 1);
+		directionalLight.position
+			.set(directionalLightPosition.x, directionalLightPosition.y, directionalLightPosition.z)
+			.normalize();
 		scene.add(directionalLight);
 	}
 
@@ -74,7 +103,7 @@
 	function createBoard(scene: THREE.Scene, width: number, height: number): void {
 		for (let i = 0; i < width; i++) {
 			for (let j = 0; j < height; j++) {
-				const color = (i + j) % 2 === 0 ? 0xf0d9b5 : 0xb58863; // Standard chessboard colors
+				const color = (i + j) % 2 === 0 ? boardColorLight : boardColorDark; // Standard chessboard colors
 				const square = createSquare(color, {
 					x: i - width / 2 + 0.5,
 					z: j - height / 2 + 0.5
@@ -86,10 +115,10 @@
 
 	// Function to create a piece
 	function createPiece(color: Color, position: Position): THREE.Mesh {
-		const pieceGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.4, 64);
+		const pieceGeometry = new THREE.CylinderGeometry(pieceRadius, pieceRadius, pieceHeight, 64);
 		const pieceMaterial = new THREE.MeshStandardMaterial({ color });
 		const piece = new THREE.Mesh(pieceGeometry, pieceMaterial);
-		piece.position.set(position.x, 0.2, position.z); // Ensure they are above the board
+		piece.position.set(position.x, pieceHeight, position.z); // Ensure they are above the board
 		piece.userData = { isPiece: true, color, isKing: false, hasMoved: false }; // Add hasMoved property
 		return piece;
 	}
@@ -97,26 +126,30 @@
 	// Function to create a king piece with a crown
 	function createKing(color: Color, position: Position): THREE.Mesh {
 		// Create the main cone part of the king
-		const pieceGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.4, 64);
+		const pieceGeometry = new THREE.CylinderGeometry(pieceRadius, pieceRadius, pieceHeight, 64);
 		const pieceMaterial = new THREE.MeshStandardMaterial({ color });
 		const piece = new THREE.Mesh(pieceGeometry, pieceMaterial);
 
 		// Position the cone
-		piece.position.set(position.x, 0.2, position.z); // Ensure it is above the board
+		piece.position.set(position.x, pieceHeight, position.z); // Ensure it is above the board
 
 		// Create the crown base (a torus/ring around the top of the cone)
-		const crownBaseGeometry = new THREE.TorusGeometry(0.25, 0.05, 16, 100);
-		const crownBaseMaterial = new THREE.MeshStandardMaterial({ color: 0xffd700 }); // Gold color
+		const crownBaseGeometry = new THREE.TorusGeometry(crownBaseRadius, crownBaseThickness, 16, 100);
+		const crownBaseMaterial = new THREE.MeshStandardMaterial({ color: kingCrownColor }); // Gold color
 		const crownBase = new THREE.Mesh(crownBaseGeometry, crownBaseMaterial);
 
 		// Position the crown base just above the cone
-		crownBase.position.set(0, 0.4, 0);
+		crownBase.position.set(0, pieceHeight, 0);
 		crownBase.rotation.x = Math.PI / 2; // Rotate so it sits horizontally
 
 		// Create the crown points (small spheres around the top of the crown base)
-		const crownPointGeometry = new THREE.SphereGeometry(0.05, 32, 32);
+		const crownPointGeometry = new THREE.SphereGeometry(
+			crownPointRadius,
+			crownPointSegments,
+			crownPointSegments
+		);
 		const crownPoints = [];
-		const pointMaterial = new THREE.MeshStandardMaterial({ color: 0xffd700 }); // Same gold color
+		const pointMaterial = new THREE.MeshStandardMaterial({ color: kingCrownColor }); // Same gold color
 
 		const numPoints = 5; // Number of points on the crown
 		const radius = 0.2; // Radius of the circle where the points are placed
@@ -125,7 +158,7 @@
 			const x = Math.cos(angle) * radius;
 			const z = Math.sin(angle) * radius;
 			const crownPoint = new THREE.Mesh(crownPointGeometry, pointMaterial);
-			crownPoint.position.set(x, 0.45, z);
+			crownPoint.position.set(x, pieceHeight + 0.05, z);
 			crownPoints.push(crownPoint);
 			piece.add(crownPoint); // Add each crown point to the piece
 		}
@@ -141,13 +174,10 @@
 
 	// Function to add pieces to the board, including promoting to kings
 	function addPieces(scene: THREE.Scene, width: number, height: number): void {
-		const redColor = 0xff0000; // Red pieces
-		const blueColor = 0x0000ff; // Blue pieces
-
 		for (let i = 0; i < width; i++) {
 			for (let j = 0; j < 3; j++) {
 				if ((i + j) % 2 !== 0) {
-					const piece = createPiece(redColor, {
+					const piece = createPiece(colorB, {
 						x: i - width / 2 + 0.5,
 						z: j - height / 2 + 0.5
 					});
@@ -159,7 +189,7 @@
 		for (let i = 0; i < width; i++) {
 			for (let j = height - 3; j < height; j++) {
 				if ((i + j) % 2 !== 0) {
-					const piece = createPiece(blueColor, {
+					const piece = createPiece(colorA, {
 						x: i - width / 2 + 0.5,
 						z: j - height / 2 + 0.5
 					});
@@ -195,7 +225,7 @@
 			if (square) {
 				highlightedSquares.push(square);
 				const material = square.material as THREE.MeshBasicMaterial;
-				material.color.setHex(0x00ff00); // Highlight color (green)
+				material.color.setHex(boardHighlightColor); // Highlight color (green)
 			}
 		});
 	}
@@ -211,6 +241,7 @@
 			selectedPiece = king;
 		}
 	}
+
 	function getLegalMoves(piece: THREE.Mesh, width: number, height: number): Position[] {
 		const legalMoves: Position[] = [];
 		const { x, z } = piece.position;
@@ -221,7 +252,7 @@
 		const hasMoved = piece.userData.hasMoved; // Track if the piece has moved
 
 		// Determine movement direction based on piece color
-		const movementDirection = color === 0xff0000 ? 1 : -1; // Red moves down, Blue moves up
+		const movementDirection = color === colorB ? 1 : -1; // White moves down, Black moves up
 
 		// Define potential moves and captures
 		const potentialMoves = isKing
@@ -352,7 +383,7 @@
 			originalPosition = { x: selectedPiece.position.x, z: selectedPiece.position.z };
 
 			// Lift the piece above the board
-			selectedPiece.position.y = 0.5;
+			selectedPiece.position.y = pieceLiftHeight;
 			isPieceLifted = true;
 
 			// Get and highlight the legal squares
@@ -366,6 +397,7 @@
 			// Determine the square where the piece is dropped
 			const targetSquare = highlightedSquares.find(
 				(sq) =>
+					selectedPiece &&
 					Math.abs(sq.position.x - selectedPiece.position.x) < 0.5 &&
 					Math.abs(sq.position.z - selectedPiece.position.z) < 0.5
 			);
@@ -401,14 +433,14 @@
 				// Promote to king if needed
 				if (
 					selectedPiece.position.z ===
-					(selectedPiece.userData.color === 0xff0000 ? height / 2 - 0.5 : -height / 2 + 0.5)
+					(selectedPiece.userData.color === colorB ? height / 2 - 0.5 : -height / 2 + 0.5)
 				) {
 					promoteToKing(selectedPiece);
 				}
 
 				// Switch turn if turn-taking is enabled
 				if (turnTaking) {
-					currentPlayer = currentPlayer === 0xff0000 ? 0x0000ff : 0xff0000; // Toggle player turn
+					currentPlayer = currentPlayer === colorB ? colorA : colorB; // Toggle player turn
 				}
 			} else {
 				// If not on a legal square, move the piece back to its original position
@@ -458,7 +490,7 @@
 					const previousMaterial = (selectedPiece as THREE.Mesh)
 						.material as THREE.MeshStandardMaterial;
 					if (previousMaterial && 'emissive' in previousMaterial) {
-						previousMaterial.emissive.setHex(0x000000);
+						previousMaterial.emissive.setHex(pieceHoverGlowColor);
 					}
 				}
 
@@ -476,7 +508,7 @@
 			// Reset the previous piece's glow when nothing is hovered
 			const previousMaterial = (selectedPiece as THREE.Mesh).material as THREE.MeshStandardMaterial;
 			if (previousMaterial && 'emissive' in previousMaterial) {
-				previousMaterial.emissive.setHex(0x000000);
+				previousMaterial.emissive.setHex(pieceHoverGlowColor);
 			}
 			selectedPiece = null;
 		}
