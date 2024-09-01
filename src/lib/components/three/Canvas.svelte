@@ -31,6 +31,7 @@
 
 	type Position = { x: number; z: number };
 	type Color = number;
+	type CaptureMove = Position & { captureX: number; captureZ: number };
 
 	export let width: number = 8; // Board width (number of squares)
 	export let height: number = 8; // Board height (number of squares)
@@ -246,126 +247,157 @@
 		const legalMoves: Position[] = [];
 		const { x, z } = piece.position;
 
-		// Determine if the piece is a king
 		const isKing = piece.userData.isKing;
 		const color = piece.userData.color;
-		const hasMoved = piece.userData.hasMoved; // Track if the piece has moved
+		const hasMoved = piece.userData.hasMoved;
+		const movementDirection = color === colorB ? 1 : -1;
 
-		// Determine movement direction based on piece color
-		const movementDirection = color === colorB ? 1 : -1; // White moves down, Black moves up
+		// Calculate potential and capture moves
+		const potentialMoves = getPotentialMoves(x, z, isKing, movementDirection, hasMoved);
+		const captureMoves = getCaptureMoves(x, z, isKing, movementDirection);
 
-		// Define potential moves and captures
-		const potentialMoves = isKing
-			? [
-					{ x: x + 1, z: z + movementDirection },
-					{ x: x - 1, z: z + movementDirection },
-					{ x: x + 1, z: z - movementDirection },
-					{ x: x - 1, z: z - movementDirection }
-				]
-			: [
-					// Adjust for first move rule
-					...(hasMoved
-						? [
-								{ x: x + 1, z: z + movementDirection },
-								{ x: x - 1, z: z + movementDirection }
-							]
-						: [
-								{ x: x + 1, z: z + movementDirection },
-								{ x: x - 1, z: z + movementDirection },
-								{ x: x + 2, z: z + movementDirection * 2 },
-								{ x: x - 2, z: z + movementDirection * 2 }
-							])
-				];
+		// Add legal moves
+		addValidMoves(legalMoves, potentialMoves, width, height, scene);
+		addValidCaptures(legalMoves, captureMoves, width, height, scene, piece);
 
-		const captureMoves = isKing
-			? [
-					{
-						x: x + 2,
-						z: z + 2 * movementDirection,
-						captureX: x + 1,
-						captureZ: z + movementDirection
-					},
-					{
-						x: x - 2,
-						z: z + 2 * movementDirection,
-						captureX: x - 1,
-						captureZ: z + movementDirection
-					},
-					{
-						x: x + 2,
-						z: z - 2 * movementDirection,
-						captureX: x + 1,
-						captureZ: z - movementDirection
-					},
-					{
-						x: x - 2,
-						z: z - 2 * movementDirection,
-						captureX: x - 1,
-						captureZ: z - movementDirection
-					}
-				]
-			: [
-					{
-						x: x + 2,
-						z: z + 2 * movementDirection,
-						captureX: x + 1,
-						captureZ: z + movementDirection
-					},
-					{
-						x: x - 2,
-						z: z + 2 * movementDirection,
-						captureX: x - 1,
-						captureZ: z + movementDirection
-					}
-				];
+		return legalMoves;
+	}
 
-		// Check for normal moves
-		for (const move of potentialMoves) {
-			if (
-				move.x >= -width / 2 &&
-				move.x < width / 2 &&
-				move.z >= -height / 2 &&
-				move.z < height / 2
-			) {
-				const occupied = scene.children.some(
-					(child) =>
-						child.userData.isPiece && child.position.x === move.x && child.position.z === move.z
-				);
-
-				if (!occupied) {
-					legalMoves.push(move);
-				}
-			}
+	// Function to get potential moves based on piece type and movement direction
+	function getPotentialMoves(
+		x: number,
+		z: number,
+		isKing: boolean,
+		movementDirection: number,
+		hasMoved: boolean
+	): Position[] {
+		if (isKing) {
+			return [
+				{ x: x + 1, z: z + movementDirection },
+				{ x: x - 1, z: z + movementDirection },
+				{ x: x + 1, z: z - movementDirection },
+				{ x: x - 1, z: z - movementDirection }
+			];
 		}
 
-		// Check for capture moves
-		for (const move of captureMoves) {
-			if (
-				move.x >= -width / 2 &&
-				move.x < width / 2 &&
-				move.z >= -height / 2 &&
-				move.z < height / 2
-			) {
-				const opponentPiece = scene.children.find(
-					(child) =>
-						child.userData.isPiece &&
-						child.position.x === move.captureX &&
-						child.position.z === move.captureZ &&
-						child.userData.color !== piece.userData.color // Ensure it's an opponent's piece
-				);
+		return hasMoved
+			? [
+					{ x: x + 1, z: z + movementDirection },
+					{ x: x - 1, z: z + movementDirection }
+				]
+			: [
+					{ x: x + 1, z: z + movementDirection },
+					{ x: x - 1, z: z + movementDirection },
+					{ x: x + 2, z: z + movementDirection * 2 },
+					{ x: x - 2, z: z + movementDirection * 2 }
+				];
+	}
 
-				const landingSquareEmpty = !scene.children.some(
-					(child) =>
-						child.userData.isPiece && child.position.x === move.x && child.position.z === move.z
-				);
+	// Function to get potential capture moves based on piece type and movement direction
+	function getCaptureMoves(
+		x: number,
+		z: number,
+		isKing: boolean,
+		movementDirection: number
+	): CaptureMove[] {
+		if (isKing) {
+			return [
+				{
+					x: x + 2,
+					z: z + 2 * movementDirection,
+					captureX: x + 1,
+					captureZ: z + movementDirection
+				},
+				{
+					x: x - 2,
+					z: z + 2 * movementDirection,
+					captureX: x - 1,
+					captureZ: z + movementDirection
+				},
+				{
+					x: x + 2,
+					z: z - 2 * movementDirection,
+					captureX: x + 1,
+					captureZ: z - movementDirection
+				},
+				{ x: x - 2, z: z - 2 * movementDirection, captureX: x - 1, captureZ: z - movementDirection }
+			];
+		}
 
-				if (opponentPiece && landingSquareEmpty) {
+		return [
+			{ x: x + 2, z: z + 2 * movementDirection, captureX: x + 1, captureZ: z + movementDirection },
+			{ x: x - 2, z: z + 2 * movementDirection, captureX: x - 1, captureZ: z + movementDirection }
+		];
+	}
+
+	// Function to validate potential moves
+	function addValidMoves(
+		legalMoves: Position[],
+		moves: Position[],
+		width: number,
+		height: number,
+		scene: THREE.Scene
+	): void {
+		for (const move of moves) {
+			if (isWithinBounds(move, width, height) && !isOccupied(move, scene)) {
+				legalMoves.push(move);
+			}
+		}
+	}
+
+	// Function to validate capture moves
+	function addValidCaptures(
+		legalMoves: Position[],
+		moves: CaptureMove[],
+		width: number,
+		height: number,
+		scene: THREE.Scene,
+		piece: THREE.Mesh
+	): void {
+		for (const move of moves) {
+			if (isWithinBounds(move, width, height)) {
+				const opponentPiece = getOpponentPieceAt(
+					move.captureX,
+					move.captureZ,
+					scene,
+					piece.userData.color
+				);
+				if (opponentPiece && !isOccupied({ x: move.x, z: move.z }, scene)) {
 					legalMoves.push({ x: move.x, z: move.z });
 				}
 			}
 		}
+	}
 
-		return legalMoves;
+	// Helper function to check if a move is within the board bounds
+	function isWithinBounds(move: Position, width: number, height: number): boolean {
+		return (
+			move.x >= -width / 2 && move.x < width / 2 && move.z >= -height / 2 && move.z < height / 2
+		);
+	}
+
+	// Helper function to check if a square is occupied
+	function isOccupied(position: Position, scene: THREE.Scene): boolean {
+		return scene.children.some(
+			(child) =>
+				child.userData.isPiece && child.position.x === position.x && child.position.z === position.z
+		);
+	}
+
+	// Helper function to find an opponent's piece at a given position
+	function getOpponentPieceAt(
+		x: number,
+		z: number,
+		scene: THREE.Scene,
+		color: Color
+	): THREE.Mesh | undefined {
+		return scene.children.find(
+			(child) =>
+				child.userData.isPiece &&
+				child.position.x === x &&
+				child.position.z === z &&
+				child.userData.color !== color
+		) as THREE.Mesh | undefined;
 	}
 
 	function handleMouseDown() {
