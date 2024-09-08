@@ -28,25 +28,28 @@ export interface MaterialConfig {
 }
 
 export interface BoardConfig {
-    size: BoardSize; // Board grid size (e.g. 8 for 8x8)
-    squareSize: number; // Each square's size
-    colors: BoardColors; // Light and dark colors of the board
-    cameraConfig?: CameraConfig; // Optional camera configuration
-    lightConfig?: LightConfig; // Optional light configuration
-    materialConfig?: MaterialConfig; // Optional material configuration for the board
-}
-export interface Piece {
-    position: [number, number]; // Position on the grid
-    color: number; // Piece color or texture
-    type: string; // e.g., "checker", "king", etc.
-}
-
-export interface BoardConfig {
     size: BoardSize;
     squareSize: number;
     colors: BoardColors;
     cameraConfig?: CameraConfig;
     lightConfig?: LightConfig;
     materialConfig?: MaterialConfig;
-    pieces?: Piece[]; // Add this to support pieces
+    pieces?: Piece[];  // Add pieces to the board configuration
+}
+
+export interface Position {
+    x: number;
+    y: number;
+}
+
+export interface Piece {
+    id: string;  // Unique identifier for the piece
+    position: Position; // Position on the grid
+    color: number;  // Color of the piece
+    type: string;   // Type of the piece (e.g., "checker", "pawn", etc.)
+}
+
+export interface MovementRules {
+    allowedMoves: (piece: Piece, boardConfig: BoardConfig) => Position[]; // Returns a list of valid positions
+    canCapture?: (piece: Piece, targetPiece: Piece) => boolean; // Defines capture rules
 }
