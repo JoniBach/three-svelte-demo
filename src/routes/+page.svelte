@@ -5,7 +5,6 @@
 <main>
 	<CheckersGame width={8} height={8} canvasWidth={400} canvasHeight={400} turnTaking={false} />
 </main>
-s
 
 <style>
 	main {

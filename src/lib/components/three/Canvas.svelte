@@ -242,9 +242,8 @@
 			selectedPiece = king;
 		}
 	}
-
 	function getLegalMoves(piece: THREE.Mesh, width: number, height: number): Position[] {
-		const legalMoves: Position[] = [];
+		const legalMoves = new Set<string>(); // Use a Set to prevent duplicates
 		const { x, z } = piece.position;
 
 		const isKing = piece.userData.isKing;
@@ -256,11 +255,120 @@
 		const potentialMoves = getPotentialMoves(x, z, isKing, movementDirection, hasMoved);
 		const captureMoves = getCaptureMoves(x, z, isKing, movementDirection);
 
-		// Add legal moves
-		addValidMoves(legalMoves, potentialMoves, width, height, scene);
-		addValidCaptures(legalMoves, captureMoves, width, height, scene, piece);
+		let canCapture = false;
+		let maxCaptures = 0; // To keep track of the maximum number of captures
 
-		return legalMoves;
+		const findAllCaptures = (
+			currentPiece: THREE.Mesh,
+			currentPosition: Position,
+			captureCount: number
+		): number => {
+			const captureMoves = getCaptureMoves(
+				currentPosition.x,
+				currentPosition.z,
+				currentPiece.userData.isKing,
+				movementDirection
+			);
+
+			let localMaxCaptures = captureCount;
+
+			captureMoves.forEach((move) => {
+				const opponentPiece = getOpponentPieceAt(
+					move.captureX,
+					move.captureZ,
+					scene,
+					currentPiece.userData.color
+				);
+
+				if (opponentPiece && !isOccupied({ x: move.x, z: move.z }, scene)) {
+					canCapture = true;
+					legalMoves.add(`${move.x},${move.z}`); // Add capture move to the Set
+
+					// Create a temporary piece object
+					const tempPiece = currentPiece.clone();
+					tempPiece.position.copy(currentPiece.position); // Clone the position as well
+
+					console.log(`Simulating capture move to (${move.x}, ${move.z})`);
+
+					// Simulate the capture move
+					tempPiece.position.set(move.x, 0.3, move.z);
+
+					// Recursively check for further captures
+					const capturesFromHere = findAllCaptures(
+						tempPiece as THREE.Mesh,
+						{ x: move.x, z: move.z },
+						captureCount + 1
+					);
+
+					// Restore the piece position after simulation
+					console.log(
+						`Restoring position to (${currentPiece.position.x}, ${currentPiece.position.z})`
+					);
+					tempPiece.position.set(currentPiece.position.x, 0.3, currentPiece.position.z);
+
+					// Update the maximum captures if this path has more captures
+					localMaxCaptures = Math.max(localMaxCaptures, capturesFromHere);
+				}
+			});
+
+			return localMaxCaptures;
+		};
+
+		maxCaptures = findAllCaptures(piece, { x, z }, 0);
+
+		addValidMoves(legalMoves, potentialMoves, width, height, scene);
+
+		const legalMovesArray = Array.from(legalMoves).map((move) => {
+			const [x, z] = move.split(',').map(Number);
+			return { x, z };
+		});
+
+		console.log('Legal Moves Array:', legalMovesArray);
+
+		if (canCapture) {
+			console.log('Can capture! Maximum captures in sequence:', maxCaptures);
+		}
+
+		return legalMovesArray;
+	}
+
+	// Function to add valid moves to the Set
+	function addValidMoves(
+		legalMoves: Set<string>,
+		moves: Position[],
+		width: number,
+		height: number,
+		scene: THREE.Scene
+	): void {
+		for (const move of moves) {
+			if (isWithinBounds(move, width, height) && !isOccupied(move, scene)) {
+				legalMoves.add(`${move.x},${move.z}`); // Add move as a string to ensure uniqueness
+			}
+		}
+	}
+
+	// Function to add valid captures to the Set
+	function addValidCaptures(
+		legalMoves: Set<string>,
+		moves: CaptureMove[],
+		width: number,
+		height: number,
+		scene: THREE.Scene,
+		piece: THREE.Mesh
+	): void {
+		for (const move of moves) {
+			if (isWithinBounds(move, width, height)) {
+				const opponentPiece = getOpponentPieceAt(
+					move.captureX,
+					move.captureZ,
+					scene,
+					piece.userData.color
+				);
+				if (opponentPiece && !isOccupied({ x: move.x, z: move.z }, scene)) {
+					legalMoves.add(`${move.x},${move.z}`); // Add capture move as a string to ensure uniqueness
+				}
+			}
+		}
 	}
 
 	// Function to get potential moves based on piece type and movement direction
@@ -320,7 +428,12 @@
 					captureX: x + 1,
 					captureZ: z - movementDirection
 				},
-				{ x: x - 2, z: z - 2 * movementDirection, captureX: x - 1, captureZ: z - movementDirection }
+				{
+					x: x - 2,
+					z: z - 2 * movementDirection,
+					captureX: x - 1,
+					captureZ: z - movementDirection
+				}
 			];
 		}
 
@@ -328,45 +441,6 @@
 			{ x: x + 2, z: z + 2 * movementDirection, captureX: x + 1, captureZ: z + movementDirection },
 			{ x: x - 2, z: z + 2 * movementDirection, captureX: x - 1, captureZ: z + movementDirection }
 		];
-	}
-
-	// Function to validate potential moves
-	function addValidMoves(
-		legalMoves: Position[],
-		moves: Position[],
-		width: number,
-		height: number,
-		scene: THREE.Scene
-	): void {
-		for (const move of moves) {
-			if (isWithinBounds(move, width, height) && !isOccupied(move, scene)) {
-				legalMoves.push(move);
-			}
-		}
-	}
-
-	// Function to validate capture moves
-	function addValidCaptures(
-		legalMoves: Position[],
-		moves: CaptureMove[],
-		width: number,
-		height: number,
-		scene: THREE.Scene,
-		piece: THREE.Mesh
-	): void {
-		for (const move of moves) {
-			if (isWithinBounds(move, width, height)) {
-				const opponentPiece = getOpponentPieceAt(
-					move.captureX,
-					move.captureZ,
-					scene,
-					piece.userData.color
-				);
-				if (opponentPiece && !isOccupied({ x: move.x, z: move.z }, scene)) {
-					legalMoves.push({ x: move.x, z: move.z });
-				}
-			}
-		}
 	}
 
 	// Helper function to check if a move is within the board bounds
