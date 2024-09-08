@@ -3,13 +3,9 @@
 	import * as THREE from 'three';
 	import type { BoardConfig, Piece, Position, MovementRules } from './types';
 
-	// Passed down config for board settings
 	export let boardConfig: BoardConfig;
-
-	// DOM element reference
 	let canvas: HTMLCanvasElement;
 
-	// Track piece meshes and state
 	let pieceMeshes: Map<string, THREE.Mesh> = new Map();
 	let selectedPiece: Piece | null = null;
 	let validMoves: Position[] = [];
@@ -18,18 +14,16 @@
 	let mouse = new THREE.Vector2();
 	let currentPlayer: number = 0xff0000; // Red starts first
 
-	// Three.js main elements
 	let camera: THREE.PerspectiveCamera;
 	let scene: THREE.Scene;
 	let renderer: THREE.WebGLRenderer;
 	let board: THREE.Group;
 
+	// Track if the current piece is in a capture sequence
+	let isMultiCaptureActive = false;
+
 	/**
 	 * Initializes the scene by creating the camera, board, renderer, and lights.
-	 * The function is modular and can be extended for different games.
-	 *
-	 * @param canvas - The HTML canvas to render to
-	 * @param boardConfig - Configuration for board settings
 	 */
 	function initScene(
 		canvas: HTMLCanvasElement,
@@ -39,52 +33,29 @@
 		camera = createCamera(canvas, boardConfig.cameraConfig);
 		renderer = createRenderer(canvas);
 
-		// Create and add the game board
 		board = createBoard(boardConfig);
 		scene.add(board);
 
-		// Add pieces to the board (extensible for different games)
 		if (boardConfig.pieces) {
 			addPiecesToBoard(scene, boardConfig.pieces, boardConfig.squareSize);
 		}
 
-		// Add lighting to the scene
 		addLights(scene, boardConfig.lightConfig);
-
-		// Start the animation/render loop
 		animateThrottled(renderer, scene, camera);
 
 		return { scene, renderer, camera };
 	}
 
-	/**
-	 * Creates the Three.js scene, which will hold the objects.
-	 *
-	 * @returns A new Three.js Scene instance.
-	 */
 	function createScene(): THREE.Scene {
 		return new THREE.Scene();
 	}
 
-	/**
-	 * Creates the WebGL renderer for Three.js.
-	 *
-	 * @param canvas - The HTML canvas to render to.
-	 * @returns A WebGLRenderer.
-	 */
 	function createRenderer(canvas: HTMLCanvasElement): THREE.WebGLRenderer {
 		const renderer = new THREE.WebGLRenderer({ canvas });
 		renderer.setSize(canvas.clientWidth, canvas.clientHeight);
 		return renderer;
 	}
 
-	/**
-	 * Creates a perspective camera for the game view.
-	 *
-	 * @param canvas - The canvas to base aspect ratio on.
-	 * @param config - Optional camera configuration.
-	 * @returns A PerspectiveCamera instance.
-	 */
 	function createCamera(
 		canvas: HTMLCanvasElement,
 		config?: {
@@ -109,12 +80,6 @@
 		return camera;
 	}
 
-	/**
-	 * Adds ambient and directional lights to the scene.
-	 *
-	 * @param scene - The Three.js scene to add lights to.
-	 * @param config - Optional lighting configuration.
-	 */
 	function addLights(
 		scene: THREE.Scene,
 		config?: { ambientColor: number; directionalColor: number; directionalIntensity: number }
@@ -130,13 +95,6 @@
 		scene.add(directionalLight);
 	}
 
-	/**
-	 * Creates the board, which consists of a grid of alternating colored squares.
-	 * This function can be reused for checkers, chess, or any grid-based game.
-	 *
-	 * @param config - Board configuration for size, colors, etc.
-	 * @returns A Three.js Group representing the board.
-	 */
 	function createBoard(config: BoardConfig): THREE.Group {
 		const { size, squareSize, colors, materialConfig } = config;
 		const { x: rows, y: columns } = size;
@@ -162,13 +120,6 @@
 		return board;
 	}
 
-	/**
-	 * Adds the pieces to the board. The pieces can be checkers, chess pieces, or any other game pieces.
-	 *
-	 * @param scene - The scene where the pieces will be added.
-	 * @param pieces - The list of pieces to be added to the board.
-	 * @param squareSize - Size of each square on the board.
-	 */
 	function addPiecesToBoard(scene: THREE.Scene, pieces: Piece[], squareSize: number) {
 		pieces.forEach((piece) => {
 			const pieceMesh = renderPiece(piece, squareSize);
@@ -177,13 +128,6 @@
 		});
 	}
 
-	/**
-	 * Renders a game piece, e.g., a checker or chess piece, as a sphere.
-	 *
-	 * @param piece - The piece to render.
-	 * @param squareSize - The size of each square.
-	 * @returns A Three.js mesh representing the piece.
-	 */
 	function renderPiece(piece: Piece, squareSize: number): THREE.Mesh {
 		const geometry = new THREE.SphereGeometry(squareSize / 4, 32, 32); // Default sphere shape for a piece
 		const material = new THREE.MeshBasicMaterial({ color: piece.color });
@@ -198,13 +142,6 @@
 		return pieceMesh;
 	}
 
-	/**
-	 * Throttles the render loop for improved performance (30 FPS).
-	 *
-	 * @param renderer - WebGLRenderer instance.
-	 * @param scene - The Three.js scene.
-	 * @param camera - The camera used for rendering.
-	 */
 	function animateThrottled(
 		renderer: THREE.WebGLRenderer,
 		scene: THREE.Scene,
@@ -223,61 +160,53 @@
 
 		requestAnimationFrame(animate);
 	}
-
-	/**
-	 * Movement rules for checkers (basic forward and capture logic).
-	 * Extendable to add more complex game rules.
-	 *
-	 * @returns Movement rules for a checker piece.
-	 */
 	function getCheckerMovementRules(): MovementRules {
 		return {
 			allowedMoves: (piece: Piece, boardConfig: BoardConfig): Position[] => {
 				const moves: Position[] = [];
-				const isRedPlayer = piece.color === 0xff0000; // Red moves upwards
+				const isRedPlayer = piece.color === 0xff0000;
+				const isKing = piece.king ?? false;
 
-				// Directions for movement (adjust for red/blue)
-				const directions = [
-					{ x: 1, y: isRedPlayer ? 1 : -1 },
-					{ x: -1, y: isRedPlayer ? 1 : -1 }
-				];
+				// Kings can move both forward and backward
+				const directions = isKing
+					? [
+							{ x: 1, y: 1 },
+							{ x: -1, y: 1 },
+							{ x: 1, y: -1 },
+							{ x: -1, y: -1 }
+						]
+					: [
+							{ x: 1, y: isRedPlayer ? 1 : -1 },
+							{ x: -1, y: isRedPlayer ? 1 : -1 }
+						];
 
-				// Calculate possible moves
-				directions.forEach((dir) => {
-					const adjacentX = piece.position.x + dir.x;
-					const adjacentY = piece.position.y + dir.y;
+				// Get both single moves and potential capture moves upfront
+				const captureMoves = getCaptureMoves(piece, boardConfig, directions, []);
+				if (captureMoves.length > 0) {
+					// Only return capture moves if there are any
+					return captureMoves;
+				} else {
+					// Otherwise return regular moves
+					directions.forEach((dir) => {
+						const adjacentX = piece.position.x + dir.x;
+						const adjacentY = piece.position.y + dir.y;
 
-					// Ensure the move stays within the board limits
-					if (
-						adjacentX >= 0 &&
-						adjacentX < boardConfig.size.x &&
-						adjacentY >= 0 &&
-						adjacentY < boardConfig.size.y
-					) {
-						const occupiedPiece = boardConfig.pieces?.find(
-							(p) => p.position.x === adjacentX && p.position.y === adjacentY
-						);
+						if (
+							adjacentX >= 0 &&
+							adjacentX < boardConfig.size.x &&
+							adjacentY >= 0 &&
+							adjacentY < boardConfig.size.y
+						) {
+							const occupiedPiece = boardConfig.pieces?.find(
+								(p) => p.position.x === adjacentX && p.position.y === adjacentY
+							);
 
-						// Empty square: regular move
-						if (!occupiedPiece) {
-							moves.push({ x: adjacentX, y: adjacentY });
-						}
-						// Capture move
-						else if (occupiedPiece.color !== piece.color) {
-							const jumpX = piece.position.x + dir.x * 2;
-							const jumpY = piece.position.y + dir.y * 2;
-							if (
-								jumpX >= 0 &&
-								jumpX < boardConfig.size.x &&
-								jumpY >= 0 &&
-								jumpY < boardConfig.size.y &&
-								!boardConfig.pieces?.some((p) => p.position.x === jumpX && p.position.y === jumpY)
-							) {
-								moves.push({ x: jumpX, y: jumpY });
+							if (!occupiedPiece) {
+								moves.push({ x: adjacentX, y: adjacentY });
 							}
 						}
-					}
-				});
+					});
+				}
 
 				return moves;
 			},
@@ -285,29 +214,61 @@
 		};
 	}
 
-	/**
-	 * Determines the movement rules for a piece based on its type.
-	 * Extend this function to handle multiple games like checkers and chess.
-	 *
-	 * @param piece - The piece to determine the movement rules for.
-	 * @returns The movement rules for the piece.
-	 */
+	// New helper function to get multi-capture moves recursively
+	function getCaptureMoves(
+		piece: Piece,
+		boardConfig: BoardConfig,
+		directions: { x: number; y: number }[],
+		capturedPieces: Position[]
+	): Position[] {
+		let moves: Position[] = [];
+
+		directions.forEach((dir) => {
+			const adjacentX = piece.position.x + dir.x;
+			const adjacentY = piece.position.y + dir.y;
+
+			const occupiedPiece = boardConfig.pieces?.find(
+				(p) => p.position.x === adjacentX && p.position.y === adjacentY
+			);
+
+			if (occupiedPiece && piece.color !== occupiedPiece.color) {
+				const jumpX = adjacentX + dir.x;
+				const jumpY = adjacentY + dir.y;
+
+				// Check if jump square is available and not already part of the capture sequence
+				if (
+					jumpX >= 0 &&
+					jumpX < boardConfig.size.x &&
+					jumpY >= 0 &&
+					jumpY < boardConfig.size.y &&
+					!boardConfig.pieces?.some((p) => p.position.x === jumpX && p.position.y === jumpY)
+				) {
+					const newCapture = { x: jumpX, y: jumpY };
+					moves.push(newCapture);
+
+					// Recursively look for additional captures after this one
+					const nextMoves = getCaptureMoves(
+						{ ...piece, position: { x: jumpX, y: jumpY } },
+						boardConfig,
+						directions,
+						[...capturedPieces, occupiedPiece.position]
+					);
+					moves = moves.concat(nextMoves);
+				}
+			}
+		});
+
+		return moves;
+	}
+
 	function getMovementRulesForPiece(piece: Piece): MovementRules {
-		// For now, only checkers rules are implemented. Extend for more piece types.
 		if (piece.type === 'checker') {
 			return getCheckerMovementRules();
 		}
 
-		// Default movement rules for unhandled piece types
 		throw new Error(`Unsupported piece type: ${piece.type}`);
 	}
 
-	/**
-	 * Highlights valid squares for movement on the board.
-	 *
-	 * @param validMoves - List of valid positions where the piece can move.
-	 * @param squareSize - Size of the board square.
-	 */
 	function highlightLegalSquares(validMoves: Position[], squareSize: number) {
 		clearHighlights();
 		validMoves.forEach((move) => {
@@ -331,15 +292,11 @@
 		});
 	}
 
-	/**
-	 * Clears the highlights from previously valid squares.
-	 */
 	function clearHighlights() {
 		highlightedSquares.forEach(({ mesh }) => scene.remove(mesh));
 		highlightedSquares = [];
 	}
 
-	// Mount the scene and handle resizing and click events
 	onMount(() => {
 		initScene(canvas, boardConfig);
 
@@ -354,13 +311,6 @@
 		};
 	});
 
-	/**
-	 * Handle window resizing by adjusting the camera and renderer size.
-	 *
-	 * @param camera - The camera to adjust.
-	 * @param renderer - The renderer to resize.
-	 * @returns A function to be used for resizing.
-	 */
 	function handleResize(camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer) {
 		return () => {
 			camera.aspect = canvas.clientWidth / canvas.clientHeight;
@@ -369,11 +319,6 @@
 		};
 	}
 
-	/**
-	 * Handle click events on the canvas. Detect piece selection and movement.
-	 *
-	 * @param event - The mouse event triggered by the click.
-	 */
 	function onCanvasClick(event: MouseEvent) {
 		mouse.x = (event.clientX / canvas.clientWidth) * 2 - 1;
 		mouse.y = -(event.clientY / canvas.clientHeight) * 2 + 1;
@@ -393,16 +338,8 @@
 			}
 
 			if (clickedSquare && selectedPiece) {
-				// Move selected piece
 				movePiece(selectedPiece, clickedSquare);
-				selectedPiece = null;
-				validMoves = [];
-				clearHighlights();
-
-				// Switch player turn
-				currentPlayer = currentPlayer === 0xff0000 ? 0x0000ff : 0xff0000;
 			} else {
-				// Check if a piece was clicked
 				let clickedPiece: Piece | undefined;
 				for (const [id, mesh] of pieceMeshes.entries()) {
 					if (mesh === intersectedObject || mesh.children.includes(intersectedObject)) {
@@ -424,15 +361,13 @@
 	/**
 	 * Moves a piece on the board to a new position.
 	 * If the move is a capture, the captured piece is removed.
-	 *
-	 * @param piece - The piece to move.
-	 * @param newPosition - The new position to move the piece to.
+	 * If further captures are possible, the player can continue to capture.
 	 */
 	function movePiece(piece: Piece, newPosition: Position) {
 		const deltaX = newPosition.x - piece.position.x;
 		const deltaY = newPosition.y - piece.position.y;
 
-		// Check if the move is a capture
+		// Check for capture
 		if (Math.abs(deltaX) === 2 && Math.abs(deltaY) === 2) {
 			const capturedX = piece.position.x + deltaX / 2;
 			const capturedY = piece.position.y + deltaY / 2;
@@ -445,10 +380,8 @@
 			}
 		}
 
-		// Update piece position in board config
+		// Update piece position
 		piece.position = newPosition;
-
-		// Update mesh position on screen
 		const mesh = pieceMeshes.get(piece.id);
 		if (mesh) {
 			mesh.position.set(
@@ -457,15 +390,24 @@
 				newPosition.y - boardConfig.size.y / 2 + boardConfig.squareSize / 2
 			);
 		}
+
+		// Handle king promotion
+		if (
+			(piece.color === 0xff0000 && newPosition.y === 7) ||
+			(piece.color === 0x0000ff && newPosition.y === 0)
+		) {
+			piece.king = true;
+			mesh?.scale.set(1.2, 1.2, 1.2); // Visual indicator for king
+		}
+
+		// End of move, clear highlights and switch player
+		selectedPiece = null;
+		validMoves = [];
+		clearHighlights();
+		currentPlayer = currentPlayer === 0xff0000 ? 0x0000ff : 0xff0000;
 	}
 
-	/**
-	 * Removes a piece from the board.
-	 *
-	 * @param piece - The piece to remove.
-	 */
 	function removePiece(piece: Piece) {
-		// Remove from boardConfig.pieces
 		if (boardConfig.pieces) {
 			const index = boardConfig.pieces.indexOf(piece);
 			if (index > -1) {
@@ -473,7 +415,6 @@
 			}
 		}
 
-		// Remove mesh from scene
 		const mesh = pieceMeshes.get(piece.id);
 		if (mesh) {
 			scene.remove(mesh);

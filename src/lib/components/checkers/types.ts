@@ -47,6 +47,7 @@ export interface Piece {
     position: Position; // Position on the grid
     color: number;  // Color of the piece
     type: string;   // Type of the piece (e.g., "checker", "pawn", etc.)
+    king?: boolean; // Whether the piece is a king
 }
 
 export interface MovementRules {
