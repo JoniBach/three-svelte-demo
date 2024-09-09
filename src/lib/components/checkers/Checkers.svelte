@@ -1,7 +1,20 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import * as THREE from 'three';
-	import type { BoardConfig, Piece, Position, MovementRules } from './types';
+	import type {
+		BoardConfig,
+		Piece,
+		Position,
+		SceneConfig,
+		CameraConfig,
+		LightConfig,
+		MovementRules,
+		ClickEventConfig,
+		PieceMoveConfig,
+		HighlightConfig,
+		ResizeHandlerConfig,
+		AnimationConfig
+	} from './entities.js';
 
 	export let boardConfig: BoardConfig;
 	let canvas: HTMLCanvasElement;
@@ -19,33 +32,33 @@
 	let renderer: THREE.WebGLRenderer;
 	let board: THREE.Group;
 
-	// Track if the current piece is in a capture sequence
 	let isMultiCaptureActive = false;
 
-	/**
-	 * Initializes the scene by creating the camera, board, renderer, and lights.
-	 */
-	function initScene(
-		canvas: HTMLCanvasElement,
-		boardConfig: BoardConfig
-	): { scene: THREE.Scene; renderer: THREE.WebGLRenderer; camera: THREE.PerspectiveCamera } {
+	// ---- Functions ----
+
+	// Initialize the scene by creating the camera, board, renderer, and lights.
+	function initScene({ canvas, boardConfig }: SceneConfig): {
+		scene: THREE.Scene;
+		renderer: THREE.WebGLRenderer;
+		camera: THREE.PerspectiveCamera;
+	} {
 		scene = createScene();
-		camera = createCamera(canvas, boardConfig.cameraConfig);
-		renderer = createRenderer(canvas);
+		camera = createCamera({ canvas, config: boardConfig.cameraConfig });
+		renderer = createRenderer({ canvas });
 
 		// Enable the camera to render both layer 0 (board) and layer 1 (pieces)
 		camera.layers.enable(0); // Enable the default layer (for the board)
 		camera.layers.enable(1); // Enable layer 1 (for the pieces)
 
-		board = createBoard(boardConfig);
+		board = createBoard({ config: boardConfig });
 		scene.add(board);
 
 		if (boardConfig.pieces) {
-			addPiecesToBoard(scene, boardConfig.pieces, boardConfig.squareSize);
+			addPiecesToBoard({ scene, pieces: boardConfig.pieces, squareSize: boardConfig.squareSize });
 		}
 
-		addLights(scene, boardConfig.lightConfig);
-		animateThrottled(renderer, scene, camera);
+		addLights({ scene, config: boardConfig.lightConfig });
+		animateThrottled({ renderer, scene, camera });
 
 		return { scene, renderer, camera };
 	}
@@ -54,29 +67,26 @@
 		return new THREE.Scene();
 	}
 
-	function createRenderer(canvas: HTMLCanvasElement): THREE.WebGLRenderer {
+	function createRenderer({ canvas }: { canvas: HTMLCanvasElement }): THREE.WebGLRenderer {
 		const renderer = new THREE.WebGLRenderer({ canvas });
 		renderer.setSize(canvas.clientWidth, canvas.clientHeight);
 		return renderer;
 	}
 
-	function createCamera(
-		canvas: HTMLCanvasElement,
-		config?: {
-			position: [number, number, number];
-			lookAt: [number, number, number];
-			fov?: number;
-			near?: number;
-			far?: number;
-		}
-	): THREE.PerspectiveCamera {
+	function createCamera({
+		canvas,
+		config
+	}: {
+		canvas: HTMLCanvasElement;
+		config?: CameraConfig;
+	}): THREE.PerspectiveCamera {
 		const camera = new THREE.PerspectiveCamera(
 			config?.fov ?? 70,
 			canvas.clientWidth / canvas.clientHeight,
 			config?.near ?? 0.1,
 			config?.far ?? 1000
 		);
-		const position = config?.position ?? [0, 15, 0]; // Default top-down view
+		const position = config?.position ?? [0, 15, 0];
 		const lookAt = config?.lookAt ?? [0, 0, 0];
 
 		camera.position.set(...position);
@@ -84,10 +94,7 @@
 		return camera;
 	}
 
-	function addLights(
-		scene: THREE.Scene,
-		config?: { ambientColor: number; directionalColor: number; directionalIntensity: number }
-	): void {
+	function addLights({ scene, config }: { scene: THREE.Scene; config?: LightConfig }): void {
 		const ambientLight = new THREE.AmbientLight(config?.ambientColor ?? 0x404040);
 		scene.add(ambientLight);
 
@@ -99,7 +106,7 @@
 		scene.add(directionalLight);
 	}
 
-	function createBoard(config: BoardConfig): THREE.Group {
+	function createBoard({ config }: { config: BoardConfig }): THREE.Group {
 		const { size, squareSize, colors, materialConfig } = config;
 		const { x: rows, y: columns } = size;
 		const board = new THREE.Group();
@@ -124,40 +131,50 @@
 		return board;
 	}
 
-	function addPiecesToBoard(scene: THREE.Scene, pieces: Piece[], squareSize: number) {
+	function addPiecesToBoard({
+		scene,
+		pieces,
+		squareSize
+	}: {
+		scene: THREE.Scene;
+		pieces: Piece[];
+		squareSize: number;
+	}): void {
 		pieces.forEach((piece) => {
-			const pieceMesh = renderPiece(piece, squareSize);
+			const pieceMesh = renderPiece({ piece, squareSize, boardConfig });
 			scene.add(pieceMesh);
 			pieceMeshes.set(piece.id, pieceMesh);
 		});
 	}
 
-	function renderPiece(piece: Piece, squareSize: number): THREE.Mesh {
-		const geometry = new THREE.SphereGeometry(squareSize / 4, 32, 32); // Sphere shape for a piece
+	function renderPiece({
+		piece,
+		squareSize,
+		boardConfig
+	}: {
+		piece: Piece;
+		squareSize: number;
+		boardConfig: BoardConfig;
+	}): THREE.Mesh {
+		const geometry = new THREE.SphereGeometry(squareSize / 4, 32, 32);
 		const material = new THREE.MeshBasicMaterial({ color: piece.color });
 		const pieceMesh = new THREE.Mesh(geometry, material);
 
-		// Set the Y position of the piece correctly above the board
-		const pieceHeight = squareSize / 4; // Half the piece height
+		const pieceHeight = squareSize / 4;
 		pieceMesh.position.set(
 			piece.position.x - boardConfig.size.x / 2 + squareSize / 2,
-			pieceHeight / 2, // Ensure it's exactly at board level
+			pieceHeight / 2,
 			piece.position.y - boardConfig.size.y / 2 + squareSize / 2
 		);
 
-		// Set the piece to layer 1 (pieces)
 		pieceMesh.layers.set(1);
 
 		return pieceMesh;
 	}
 
-	function animateThrottled(
-		renderer: THREE.WebGLRenderer,
-		scene: THREE.Scene,
-		camera: THREE.PerspectiveCamera
-	): void {
+	function animateThrottled({ renderer, scene, camera }: AnimationConfig): void {
 		let lastRenderTime = 0;
-		const renderInterval = 1000 / 30; // 30 FPS limit
+		const renderInterval = 1000 / 30;
 
 		const animate = (currentTime: number) => {
 			if (currentTime - lastRenderTime >= renderInterval) {
@@ -169,14 +186,32 @@
 
 		requestAnimationFrame(animate);
 	}
-	function getCheckerMovementRules(): MovementRules {
+
+	// ---- Game Logic Functions ----
+
+	// Get movement rules based on piece type
+	function getMovementRulesForPiece({
+		piece,
+		boardConfig
+	}: {
+		piece: Piece;
+		boardConfig: BoardConfig;
+	}): MovementRules {
+		if (piece.type === 'checker') {
+			return getCheckerMovementRules({ boardConfig });
+		}
+
+		throw new Error(`Unsupported piece type: ${piece.type}`);
+	}
+
+	// Get checker-specific movement rules
+	function getCheckerMovementRules({ boardConfig }: { boardConfig: BoardConfig }): MovementRules {
 		return {
-			allowedMoves: (piece: Piece, boardConfig: BoardConfig): Position[] => {
+			allowedMoves: (piece: Piece): Position[] => {
 				const moves: Position[] = [];
 				const isRedPlayer = piece.color === 0xff0000;
 				const isKing = piece.king ?? false;
 
-				// Kings can move both forward and backward
 				const directions = isKing
 					? [
 							{ x: 1, y: 1 },
@@ -189,15 +224,17 @@
 							{ x: -1, y: isRedPlayer ? 1 : -1 }
 						];
 
-				// Get both single moves and potential capture moves upfront
-				const captureMoves = getCaptureMoves(piece, boardConfig, directions, []);
+				const captureMoves = getCaptureMoves({
+					piece,
+					boardConfig,
+					directions,
+					capturedPieces: []
+				});
 
-				// If there are any capture moves, only return those and block regular moves
 				if (captureMoves.length > 0) {
 					return captureMoves;
 				}
 
-				// Otherwise return regular moves if no capture moves are available
 				directions.forEach((dir) => {
 					const adjacentX = piece.position.x + dir.x;
 					const adjacentY = piece.position.y + dir.y;
@@ -224,13 +261,18 @@
 		};
 	}
 
-	// Modify getCaptureMoves to handle only single captures
-	function getCaptureMoves(
-		piece: Piece,
-		boardConfig: BoardConfig,
-		directions: { x: number; y: number }[],
-		capturedPieces: Position[]
-	): Position[] {
+	// Get capture moves
+	function getCaptureMoves({
+		piece,
+		boardConfig,
+		directions,
+		capturedPieces
+	}: {
+		piece: Piece;
+		boardConfig: BoardConfig;
+		directions: { x: number; y: number }[];
+		capturedPieces: Position[];
+	}): Position[] {
 		let moves: Position[] = [];
 
 		directions.forEach((dir) => {
@@ -245,7 +287,6 @@
 				const jumpX = adjacentX + dir.x;
 				const jumpY = adjacentY + dir.y;
 
-				// Check if the jump square is available and not already captured
 				if (
 					jumpX >= 0 &&
 					jumpX < boardConfig.size.x &&
@@ -254,7 +295,7 @@
 					!boardConfig.pieces?.some((p) => p.position.x === jumpX && p.position.y === jumpY)
 				) {
 					const newCapture = { x: jumpX, y: jumpY };
-					moves.push(newCapture); // Return the immediate capture move only
+					moves.push(newCapture);
 				}
 			}
 		});
@@ -262,20 +303,172 @@
 		return moves;
 	}
 
-	function getMovementRulesForPiece(piece: Piece): MovementRules {
-		if (piece.type === 'checker') {
-			return getCheckerMovementRules();
+	// ---- Event Handling Functions ----
+
+	// Handle canvas clicks
+	function onCanvasClick({
+		event,
+		raycaster,
+		mouse,
+		camera,
+		scene,
+		boardConfig,
+		pieceMeshes,
+		highlightedSquares
+	}: ClickEventConfig) {
+		mouse.x = (event.clientX / canvas.clientWidth) * 2 - 1;
+		mouse.y = -(event.clientY / canvas.clientHeight) * 2 + 1;
+
+		raycaster.setFromCamera(mouse, camera);
+
+		raycaster.layers.set(1);
+
+		const pieceIntersects = raycaster.intersectObjects([...pieceMeshes.values()], true);
+		if (pieceIntersects.length > 0) {
+			const intersectedPiece = pieceIntersects[0].object;
+
+			let clickedPiece: Piece | undefined;
+			for (const [id, mesh] of pieceMeshes.entries()) {
+				if (mesh === intersectedPiece) {
+					clickedPiece = boardConfig.pieces?.find((p) => p.id === id);
+					break;
+				}
+			}
+
+			if (clickedPiece && clickedPiece.color === currentPlayer) {
+				selectedPiece = clickedPiece;
+				const movementRules = getMovementRulesForPiece({ piece: selectedPiece, boardConfig });
+				validMoves = movementRules.allowedMoves(selectedPiece);
+				highlightLegalSquares({ validMoves, squareSize: boardConfig.squareSize });
+				return;
+			}
 		}
 
-		throw new Error(`Unsupported piece type: ${piece.type}`);
+		raycaster.layers.set(0);
+
+		const intersects = raycaster.intersectObjects(scene.children, true);
+		if (intersects.length > 0) {
+			const intersectedObject = intersects[0].object;
+
+			let clickedSquare: Position | undefined;
+			for (const { mesh, position } of highlightedSquares) {
+				if (mesh === intersectedObject) {
+					clickedSquare = position;
+					break;
+				}
+			}
+
+			if (clickedSquare && selectedPiece) {
+				movePiece({
+					piece: selectedPiece,
+					newPosition: clickedSquare,
+					boardConfig,
+					pieceMeshes,
+					scene,
+					highlightedSquares
+				});
+			}
+		}
 	}
 
-	function highlightLegalSquares(validMoves: Position[], squareSize: number) {
-		clearHighlights();
+	// Move pieces on the board
+	function movePiece({
+		piece,
+		newPosition,
+		boardConfig,
+		pieceMeshes,
+		scene,
+		highlightedSquares
+	}: PieceMoveConfig) {
+		const deltaX = newPosition.x - piece.position.x;
+		const deltaY = newPosition.y - piece.position.y;
+
+		let isCaptureMove = false;
+		if (Math.abs(deltaX) === 2 && Math.abs(deltaY) === 2) {
+			const capturedX = piece.position.x + deltaX / 2;
+			const capturedY = piece.position.y + deltaY / 2;
+			const capturedPiece = boardConfig.pieces?.find(
+				(p) => p.position.x === capturedX && p.position.y === capturedY
+			);
+
+			if (capturedPiece) {
+				removePiece({ piece: capturedPiece, boardConfig, pieceMeshes, scene });
+				isCaptureMove = true;
+				isMultiCaptureActive = true;
+			}
+		}
+
+		piece.position = newPosition;
+		const mesh = pieceMeshes.get(piece.id);
+		if (mesh) {
+			mesh.position.set(
+				newPosition.x - boardConfig.size.x / 2 + boardConfig.squareSize / 2,
+				boardConfig.squareSize / 4,
+				newPosition.y - boardConfig.size.y / 2 + boardConfig.squareSize / 2
+			);
+		}
+
+		if (
+			(piece.color === 0xff0000 && newPosition.y === 7) ||
+			(piece.color === 0x0000ff && newPosition.y === 0)
+		) {
+			piece.king = true;
+			mesh?.scale.set(1.2, 1.2, 1.2);
+		}
+
+		validMoves = [];
+		clearHighlights({ scene, highlightedSquares });
+
+		if (isCaptureMove) {
+			const movementRules = getMovementRulesForPiece({ piece, boardConfig });
+			validMoves = movementRules.allowedMoves(piece);
+
+			if (validMoves.some((move) => Math.abs(move.x - piece.position.x) === 2)) {
+				highlightLegalSquares({ validMoves, squareSize: boardConfig.squareSize });
+				return;
+			} else {
+				isMultiCaptureActive = false;
+			}
+		}
+
+		selectedPiece = null;
+		currentPlayer = currentPlayer === 0xff0000 ? 0x0000ff : 0xff0000;
+		isMultiCaptureActive = false;
+	}
+
+	// Remove a piece from the board
+	function removePiece({
+		piece,
+		boardConfig,
+		pieceMeshes,
+		scene
+	}: {
+		piece: Piece;
+		boardConfig: BoardConfig;
+		pieceMeshes: Map<string, THREE.Mesh>;
+		scene: THREE.Scene;
+	}) {
+		if (boardConfig.pieces) {
+			const index = boardConfig.pieces.indexOf(piece);
+			if (index > -1) {
+				boardConfig.pieces.splice(index, 1);
+			}
+		}
+
+		const mesh = pieceMeshes.get(piece.id);
+		if (mesh) {
+			scene.remove(mesh);
+			pieceMeshes.delete(piece.id);
+		}
+	}
+
+	// Highlight legal squares for a piece to move to
+	function highlightLegalSquares({ validMoves, squareSize }: HighlightConfig) {
+		clearHighlights({ scene, highlightedSquares });
 		validMoves.forEach((move) => {
 			const highlightGeometry = new THREE.PlaneGeometry(squareSize, squareSize);
 			const highlightMaterial = new THREE.MeshBasicMaterial({
-				color: 0x00ff00, // Green for highlighting
+				color: 0x00ff00,
 				opacity: 0.5,
 				transparent: true,
 				side: THREE.DoubleSide
@@ -293,174 +486,63 @@
 		});
 	}
 
-	function clearHighlights() {
+	// Clear all highlighted squares
+	function clearHighlights({
+		scene,
+		highlightedSquares
+	}: {
+		scene: THREE.Scene;
+		highlightedSquares: { mesh: THREE.Mesh; position: Position }[];
+	}) {
 		highlightedSquares.forEach(({ mesh }) => scene.remove(mesh));
-		highlightedSquares = [];
+		highlightedSquares.length = 0;
 	}
 
-	onMount(() => {
-		initScene(canvas, boardConfig);
+	// ---- Lifecycle Methods ----
 
-		const resizeHandler = handleResize(camera, renderer);
+	onMount(() => {
+		initScene({ canvas, boardConfig });
+
+		const resizeHandler = handleResize({ camera, renderer, canvas });
 		window.addEventListener('resize', resizeHandler);
 
-		canvas.addEventListener('click', onCanvasClick);
+		canvas.addEventListener('click', (event: MouseEvent) =>
+			onCanvasClick({
+				event,
+				raycaster,
+				mouse,
+				camera,
+				scene,
+				boardConfig,
+				pieceMeshes,
+				highlightedSquares
+			})
+		);
 
 		return () => {
 			window.removeEventListener('resize', resizeHandler);
-			canvas.removeEventListener('click', onCanvasClick);
+			canvas.removeEventListener('click', (event: MouseEvent) =>
+				onCanvasClick({
+					event,
+					raycaster,
+					mouse,
+					camera,
+					scene,
+					boardConfig,
+					pieceMeshes,
+					highlightedSquares
+				})
+			);
 		};
 	});
 
-	function handleResize(camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer) {
+	// Resize handler to adjust camera and renderer
+	function handleResize({ camera, renderer, canvas }: ResizeHandlerConfig) {
 		return () => {
 			camera.aspect = canvas.clientWidth / canvas.clientHeight;
 			camera.updateProjectionMatrix();
 			renderer.setSize(canvas.clientWidth, canvas.clientHeight);
 		};
-	}
-
-	function onCanvasClick(event: MouseEvent) {
-		mouse.x = (event.clientX / canvas.clientWidth) * 2 - 1;
-		mouse.y = -(event.clientY / canvas.clientHeight) * 2 + 1;
-
-		raycaster.setFromCamera(mouse, camera);
-
-		// Only check for intersections with objects in layer 1 (pieces)
-		raycaster.layers.set(1); // Set the raycaster to check objects on layer 1 (pieces)
-
-		const pieceIntersects = raycaster.intersectObjects([...pieceMeshes.values()], true);
-		if (pieceIntersects.length > 0) {
-			const intersectedPiece = pieceIntersects[0].object;
-
-			let clickedPiece: Piece | undefined;
-			for (const [id, mesh] of pieceMeshes.entries()) {
-				if (mesh === intersectedPiece) {
-					clickedPiece = boardConfig.pieces?.find((p) => p.id === id);
-					break;
-				}
-			}
-
-			if (clickedPiece && clickedPiece.color === currentPlayer) {
-				selectedPiece = clickedPiece;
-				const movementRules = getMovementRulesForPiece(selectedPiece);
-				validMoves = movementRules.allowedMoves(selectedPiece, boardConfig);
-				highlightLegalSquares(validMoves, boardConfig.squareSize);
-				return; // Exit if a piece is clicked
-			}
-		}
-
-		// Now check for board square clicks (layer 0)
-		raycaster.layers.set(0); // Check objects on layer 0 (the board)
-
-		const intersects = raycaster.intersectObjects(scene.children, true);
-		if (intersects.length > 0) {
-			const intersectedObject = intersects[0].object;
-
-			let clickedSquare: Position | undefined;
-			for (const { mesh, position } of highlightedSquares) {
-				if (mesh === intersectedObject) {
-					clickedSquare = position;
-					break;
-				}
-			}
-
-			if (clickedSquare && selectedPiece) {
-				movePiece(selectedPiece, clickedSquare);
-			}
-		}
-	}
-
-	/**
-	 * Moves a piece on the board to a new position.
-	 * If the move is a capture, the captured piece is removed.
-	 * If further captures are possible, the player can continue to capture.
-	 */
-	function movePiece(piece: Piece, newPosition: Position) {
-		console.log('Move piece:', piece, 'New Position:', newPosition);
-
-		const deltaX = newPosition.x - piece.position.x;
-		const deltaY = newPosition.y - piece.position.y;
-
-		// Check for capture
-		let isCaptureMove = false;
-		if (Math.abs(deltaX) === 2 && Math.abs(deltaY) === 2) {
-			const capturedX = piece.position.x + deltaX / 2;
-			const capturedY = piece.position.y + deltaY / 2;
-			const capturedPiece = boardConfig.pieces?.find(
-				(p) => p.position.x === capturedX && p.position.y === capturedY
-			);
-
-			if (capturedPiece) {
-				console.log('Captured piece:', capturedPiece);
-				removePiece(capturedPiece);
-				isCaptureMove = true; // Mark this as a capture move
-				isMultiCaptureActive = true; // Start capture chain
-			}
-		}
-
-		// Update piece position
-		piece.position = newPosition;
-		const mesh = pieceMeshes.get(piece.id);
-		if (mesh) {
-			mesh.position.set(
-				newPosition.x - boardConfig.size.x / 2 + boardConfig.squareSize / 2,
-				boardConfig.squareSize / 4,
-				newPosition.y - boardConfig.size.y / 2 + boardConfig.squareSize / 2
-			);
-		}
-
-		// Handle king promotion
-		if (
-			(piece.color === 0xff0000 && newPosition.y === 7) ||
-			(piece.color === 0x0000ff && newPosition.y === 0)
-		) {
-			piece.king = true;
-			mesh?.scale.set(1.2, 1.2, 1.2); // Visual indicator for king
-		}
-
-		// Clear previous highlights
-		validMoves = [];
-		clearHighlights();
-
-		// Check if further capture moves are available and only allow capture moves
-		if (isCaptureMove) {
-			const movementRules = getMovementRulesForPiece(piece);
-			validMoves = movementRules.allowedMoves(piece, boardConfig);
-
-			// Only allow capture moves during a multi-capture sequence
-			if (
-				validMoves.length > 0 &&
-				validMoves.some((move) => Math.abs(move.x - piece.position.x) === 2)
-			) {
-				console.log('Further capture moves available:', validMoves);
-				highlightLegalSquares(validMoves, boardConfig.squareSize);
-				return; // Keep in capture chain
-			} else {
-				console.log('No further capture moves available. Ending turn.');
-				isMultiCaptureActive = false; // End capture chain
-			}
-		}
-
-		// If no further captures are possible or it's a regular move, switch player
-		selectedPiece = null; // Ensure piece is deselected after the move
-		currentPlayer = currentPlayer === 0xff0000 ? 0x0000ff : 0xff0000;
-		isMultiCaptureActive = false; // Ensure capture chain is ended
-	}
-
-	function removePiece(piece: Piece) {
-		if (boardConfig.pieces) {
-			const index = boardConfig.pieces.indexOf(piece);
-			if (index > -1) {
-				boardConfig.pieces.splice(index, 1);
-			}
-		}
-
-		const mesh = pieceMeshes.get(piece.id);
-		if (mesh) {
-			scene.remove(mesh);
-			pieceMeshes.delete(piece.id);
-		}
 	}
 </script>
 
