@@ -33,6 +33,10 @@
 		camera = createCamera(canvas, boardConfig.cameraConfig);
 		renderer = createRenderer(canvas);
 
+		// Enable the camera to render both layer 0 (board) and layer 1 (pieces)
+		camera.layers.enable(0); // Enable the default layer (for the board)
+		camera.layers.enable(1); // Enable layer 1 (for the pieces)
+
 		board = createBoard(boardConfig);
 		scene.add(board);
 
@@ -129,15 +133,20 @@
 	}
 
 	function renderPiece(piece: Piece, squareSize: number): THREE.Mesh {
-		const geometry = new THREE.SphereGeometry(squareSize / 4, 32, 32); // Default sphere shape for a piece
+		const geometry = new THREE.SphereGeometry(squareSize / 4, 32, 32); // Sphere shape for a piece
 		const material = new THREE.MeshBasicMaterial({ color: piece.color });
 		const pieceMesh = new THREE.Mesh(geometry, material);
 
+		// Set the Y position of the piece correctly above the board
+		const pieceHeight = squareSize / 4; // Half the piece height
 		pieceMesh.position.set(
 			piece.position.x - boardConfig.size.x / 2 + squareSize / 2,
-			squareSize / 4,
+			pieceHeight / 2, // Ensure it's exactly at board level
 			piece.position.y - boardConfig.size.y / 2 + squareSize / 2
 		);
+
+		// Set the piece to layer 1 (pieces)
+		pieceMesh.layers.set(1);
 
 		return pieceMesh;
 	}
@@ -316,8 +325,35 @@
 		mouse.y = -(event.clientY / canvas.clientHeight) * 2 + 1;
 
 		raycaster.setFromCamera(mouse, camera);
-		const intersects = raycaster.intersectObjects(scene.children, true);
 
+		// Only check for intersections with objects in layer 1 (pieces)
+		raycaster.layers.set(1); // Set the raycaster to check objects on layer 1 (pieces)
+
+		const pieceIntersects = raycaster.intersectObjects([...pieceMeshes.values()], true);
+		if (pieceIntersects.length > 0) {
+			const intersectedPiece = pieceIntersects[0].object;
+
+			let clickedPiece: Piece | undefined;
+			for (const [id, mesh] of pieceMeshes.entries()) {
+				if (mesh === intersectedPiece) {
+					clickedPiece = boardConfig.pieces?.find((p) => p.id === id);
+					break;
+				}
+			}
+
+			if (clickedPiece && clickedPiece.color === currentPlayer) {
+				selectedPiece = clickedPiece;
+				const movementRules = getMovementRulesForPiece(selectedPiece);
+				validMoves = movementRules.allowedMoves(selectedPiece, boardConfig);
+				highlightLegalSquares(validMoves, boardConfig.squareSize);
+				return; // Exit if a piece is clicked
+			}
+		}
+
+		// Now check for board square clicks (layer 0)
+		raycaster.layers.set(0); // Check objects on layer 0 (the board)
+
+		const intersects = raycaster.intersectObjects(scene.children, true);
 		if (intersects.length > 0) {
 			const intersectedObject = intersects[0].object;
 
@@ -331,21 +367,6 @@
 
 			if (clickedSquare && selectedPiece) {
 				movePiece(selectedPiece, clickedSquare);
-			} else {
-				let clickedPiece: Piece | undefined;
-				for (const [id, mesh] of pieceMeshes.entries()) {
-					if (mesh === intersectedObject || mesh.children.includes(intersectedObject)) {
-						clickedPiece = boardConfig.pieces?.find((p) => p.id === id);
-						break;
-					}
-				}
-
-				if (clickedPiece && clickedPiece.color === currentPlayer) {
-					selectedPiece = clickedPiece;
-					const movementRules = getMovementRulesForPiece(selectedPiece);
-					validMoves = movementRules.allowedMoves(selectedPiece, boardConfig);
-					highlightLegalSquares(validMoves, boardConfig.squareSize);
-				}
 			}
 		}
 	}
