@@ -214,7 +214,7 @@
 		};
 	}
 
-	// New helper function to get multi-capture moves recursively
+	// Modify getCaptureMoves to handle only single captures
 	function getCaptureMoves(
 		piece: Piece,
 		boardConfig: BoardConfig,
@@ -235,7 +235,7 @@
 				const jumpX = adjacentX + dir.x;
 				const jumpY = adjacentY + dir.y;
 
-				// Check if jump square is available and not already part of the capture sequence
+				// Check if the jump square is available and not already captured
 				if (
 					jumpX >= 0 &&
 					jumpX < boardConfig.size.x &&
@@ -244,16 +244,7 @@
 					!boardConfig.pieces?.some((p) => p.position.x === jumpX && p.position.y === jumpY)
 				) {
 					const newCapture = { x: jumpX, y: jumpY };
-					moves.push(newCapture);
-
-					// Recursively look for additional captures after this one
-					const nextMoves = getCaptureMoves(
-						{ ...piece, position: { x: jumpX, y: jumpY } },
-						boardConfig,
-						directions,
-						[...capturedPieces, occupiedPiece.position]
-					);
-					moves = moves.concat(nextMoves);
+					moves.push(newCapture); // Return the immediate capture move only
 				}
 			}
 		});
@@ -364,10 +355,13 @@
 	 * If further captures are possible, the player can continue to capture.
 	 */
 	function movePiece(piece: Piece, newPosition: Position) {
+		console.log('Move piece:', piece, 'New Position:', newPosition);
+
 		const deltaX = newPosition.x - piece.position.x;
 		const deltaY = newPosition.y - piece.position.y;
 
 		// Check for capture
+		let isCaptureMove = false;
 		if (Math.abs(deltaX) === 2 && Math.abs(deltaY) === 2) {
 			const capturedX = piece.position.x + deltaX / 2;
 			const capturedY = piece.position.y + deltaY / 2;
@@ -376,7 +370,9 @@
 			);
 
 			if (capturedPiece) {
+				console.log('Captured piece:', capturedPiece);
 				removePiece(capturedPiece);
+				isCaptureMove = true; // Mark this as a capture move
 			}
 		}
 
@@ -400,10 +396,27 @@
 			mesh?.scale.set(1.2, 1.2, 1.2); // Visual indicator for king
 		}
 
-		// End of move, clear highlights and switch player
-		selectedPiece = null;
+		// Clear previous highlights
 		validMoves = [];
 		clearHighlights();
+
+		// Check if further capture moves are available
+		if (isCaptureMove) {
+			const movementRules = getMovementRulesForPiece(piece);
+			validMoves = movementRules.allowedMoves(piece, boardConfig);
+
+			if (validMoves.length > 0) {
+				console.log('Further capture moves available:', validMoves);
+				highlightLegalSquares(validMoves, boardConfig.squareSize);
+				// Return to allow the player to make another capture move
+				return;
+			} else {
+				console.log('No further capture moves available. Ending turn.');
+			}
+		}
+
+		// If no further captures are possible or it's a regular move, switch player
+		selectedPiece = null; // Ensure piece is deselected after the move
 		currentPlayer = currentPlayer === 0xff0000 ? 0x0000ff : 0xff0000;
 	}
 
