@@ -109,3 +109,9 @@ export interface AnimationConfig {
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
 }
+export interface MoveCaptuireConfig {
+    piece: Piece;
+    boardConfig: BoardConfig;
+    directions: { x: number; y: number }[];
+    capturedPieces: Position[];
+}

@@ -13,7 +13,8 @@
 		PieceMoveConfig,
 		HighlightConfig,
 		ResizeHandlerConfig,
-		AnimationConfig
+		AnimationConfig,
+		MoveCaptuireConfig
 	} from './entities.js';
 
 	export let boardConfig: BoardConfig;
@@ -262,17 +263,7 @@
 	}
 
 	// Get capture moves
-	function getCaptureMoves({
-		piece,
-		boardConfig,
-		directions,
-		capturedPieces
-	}: {
-		piece: Piece;
-		boardConfig: BoardConfig;
-		directions: { x: number; y: number }[];
-		capturedPieces: Position[];
-	}): Position[] {
+	function getCaptureMoves({ piece, boardConfig, directions }: MoveCaptuireConfig): Position[] {
 		let moves: Position[] = [];
 
 		directions.forEach((dir) => {
