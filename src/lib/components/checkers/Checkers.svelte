@@ -182,31 +182,32 @@
 
 				// Get both single moves and potential capture moves upfront
 				const captureMoves = getCaptureMoves(piece, boardConfig, directions, []);
+
+				// If there are any capture moves, only return those and block regular moves
 				if (captureMoves.length > 0) {
-					// Only return capture moves if there are any
 					return captureMoves;
-				} else {
-					// Otherwise return regular moves
-					directions.forEach((dir) => {
-						const adjacentX = piece.position.x + dir.x;
-						const adjacentY = piece.position.y + dir.y;
-
-						if (
-							adjacentX >= 0 &&
-							adjacentX < boardConfig.size.x &&
-							adjacentY >= 0 &&
-							adjacentY < boardConfig.size.y
-						) {
-							const occupiedPiece = boardConfig.pieces?.find(
-								(p) => p.position.x === adjacentX && p.position.y === adjacentY
-							);
-
-							if (!occupiedPiece) {
-								moves.push({ x: adjacentX, y: adjacentY });
-							}
-						}
-					});
 				}
+
+				// Otherwise return regular moves if no capture moves are available
+				directions.forEach((dir) => {
+					const adjacentX = piece.position.x + dir.x;
+					const adjacentY = piece.position.y + dir.y;
+
+					if (
+						adjacentX >= 0 &&
+						adjacentX < boardConfig.size.x &&
+						adjacentY >= 0 &&
+						adjacentY < boardConfig.size.y
+					) {
+						const occupiedPiece = boardConfig.pieces?.find(
+							(p) => p.position.x === adjacentX && p.position.y === adjacentY
+						);
+
+						if (!occupiedPiece) {
+							moves.push({ x: adjacentX, y: adjacentY });
+						}
+					}
+				});
 
 				return moves;
 			},
@@ -373,6 +374,7 @@
 				console.log('Captured piece:', capturedPiece);
 				removePiece(capturedPiece);
 				isCaptureMove = true; // Mark this as a capture move
+				isMultiCaptureActive = true; // Start capture chain
 			}
 		}
 
@@ -400,24 +402,29 @@
 		validMoves = [];
 		clearHighlights();
 
-		// Check if further capture moves are available
+		// Check if further capture moves are available and only allow capture moves
 		if (isCaptureMove) {
 			const movementRules = getMovementRulesForPiece(piece);
 			validMoves = movementRules.allowedMoves(piece, boardConfig);
 
-			if (validMoves.length > 0) {
+			// Only allow capture moves during a multi-capture sequence
+			if (
+				validMoves.length > 0 &&
+				validMoves.some((move) => Math.abs(move.x - piece.position.x) === 2)
+			) {
 				console.log('Further capture moves available:', validMoves);
 				highlightLegalSquares(validMoves, boardConfig.squareSize);
-				// Return to allow the player to make another capture move
-				return;
+				return; // Keep in capture chain
 			} else {
 				console.log('No further capture moves available. Ending turn.');
+				isMultiCaptureActive = false; // End capture chain
 			}
 		}
 
 		// If no further captures are possible or it's a regular move, switch player
 		selectedPiece = null; // Ensure piece is deselected after the move
 		currentPlayer = currentPlayer === 0xff0000 ? 0x0000ff : 0xff0000;
+		isMultiCaptureActive = false; // Ensure capture chain is ended
 	}
 
 	function removePiece(piece: Piece) {
