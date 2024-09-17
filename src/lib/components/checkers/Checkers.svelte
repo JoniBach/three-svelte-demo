@@ -35,9 +35,6 @@
 
 	let isMultiCaptureActive = false;
 
-	// ---- Functions ----
-
-	// Initialize the scene by creating the camera, board, renderer, and lights.
 	function initScene({ canvas, boardConfig }: SceneConfig): {
 		scene: THREE.Scene;
 		renderer: THREE.WebGLRenderer;
@@ -188,9 +185,6 @@
 		requestAnimationFrame(animate);
 	}
 
-	// ---- Game Logic Functions ----
-
-	// Get movement rules based on piece type
 	function getMovementRulesForPiece({
 		piece,
 		boardConfig
@@ -205,7 +199,36 @@
 		throw new Error(`Unsupported piece type: ${piece.type}`);
 	}
 
-	// Get checker-specific movement rules
+	function getValidMoves(
+		piece: Piece,
+		directions: { x: number; y: number }[],
+		boardConfig: BoardConfig
+	): Position[] {
+		const validMoves: Position[] = [];
+
+		directions.forEach((dir) => {
+			const adjacentX = piece.position.x + dir.x;
+			const adjacentY = piece.position.y + dir.y;
+
+			if (
+				adjacentX >= 0 &&
+				adjacentX < boardConfig.size.x &&
+				adjacentY >= 0 &&
+				adjacentY < boardConfig.size.y
+			) {
+				const occupiedPiece = boardConfig.pieces?.find(
+					(p) => p.position.x === adjacentX && p.position.y === adjacentY
+				);
+
+				if (!occupiedPiece) {
+					validMoves.push({ x: adjacentX, y: adjacentY });
+				}
+			}
+		});
+
+		return validMoves;
+	}
+
 	function getCheckerMovementRules({ boardConfig }: { boardConfig: BoardConfig }): MovementRules {
 		return {
 			allowedMoves: (piece: Piece): Position[] => {
@@ -262,7 +285,6 @@
 		};
 	}
 
-	// Get capture moves
 	function getCaptureMoves({ piece, boardConfig, directions }: MoveCaptuireConfig): Position[] {
 		let moves: Position[] = [];
 
@@ -294,9 +316,6 @@
 		return moves;
 	}
 
-	// ---- Event Handling Functions ----
-
-	// Handle canvas clicks
 	function onCanvasClick({
 		event,
 		raycaster,
@@ -362,7 +381,6 @@
 		}
 	}
 
-	// Move pieces on the board
 	function movePiece({
 		piece,
 		newPosition,
@@ -427,7 +445,6 @@
 		isMultiCaptureActive = false;
 	}
 
-	// Remove a piece from the board
 	function removePiece({
 		piece,
 		boardConfig,
@@ -453,7 +470,7 @@
 		}
 	}
 
-	// Highlight legal squares for a piece to move to
+	// Highligt legal squares for a piece to move to
 	function highlightLegalSquares({ validMoves, squareSize }: HighlightConfig) {
 		clearHighlights({ scene, highlightedSquares });
 		validMoves.forEach((move) => {
@@ -477,7 +494,6 @@
 		});
 	}
 
-	// Clear all highlighted squares
 	function clearHighlights({
 		scene,
 		highlightedSquares
@@ -488,8 +504,6 @@
 		highlightedSquares.forEach(({ mesh }) => scene.remove(mesh));
 		highlightedSquares.length = 0;
 	}
-
-	// ---- Lifecycle Methods ----
 
 	onMount(() => {
 		initScene({ canvas, boardConfig });
