@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Checkers from '$lib/components/checkers/Checkers.svelte';
-	import type { Piece, BoardConfig } from '$lib/components/checkers/types';
+	import type { BoardConfig, Piece } from '$lib/components/checkers/entities';
 
 	// const pieces: Piece[] = [
 	// 	// Red pieces (Player 1) - usually placed at the top (rows 0, 1, 2)
