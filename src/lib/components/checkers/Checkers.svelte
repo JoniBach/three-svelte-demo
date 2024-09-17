@@ -551,4 +551,4 @@
 	}
 </script>
 
-<canvas bind:this={canvas} style="border: 1px solid #000; width: 100%; height: 100%;"></canvas>
+<canvas bind:this={canvas} style=" width: 100%; height: 100%;"></canvas>
