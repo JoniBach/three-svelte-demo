@@ -6,6 +6,7 @@ import * as THREE from 'three';
 export interface SceneConfig {
     canvas: HTMLCanvasElement;
     boardConfig: BoardConfig;
+    pieceMeshes: Map<string, THREE.Mesh>;
 }
 
 // Board configuration and entities
